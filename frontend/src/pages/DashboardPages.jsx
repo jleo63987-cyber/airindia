@@ -7,10 +7,8 @@ import {
   ArrowRight,
   ArrowUpFromLine,
   BatteryCharging,
-  Bell,
   Camera,
   Check,
-  ChevronRight,
   Clipboard,
   Clock3,
   Download,
@@ -21,7 +19,6 @@ import {
   HardDrive,
   House,
   Keyboard,
-  Laptop2,
   LockKeyhole,
   Mic,
   MicOff,
@@ -36,7 +33,6 @@ import {
   RotateCw,
   Search,
   Send,
-  Settings,
   ShieldCheck,
   Signal,
   Smartphone,
@@ -59,7 +55,6 @@ import {
   getDevice,
   getOpenSessionForDevice,
   getSession,
-  getWorkspaceSettings,
   listDevices,
   listFileTransfers,
   listSessionEvents,
@@ -69,7 +64,6 @@ import {
   removeDevice,
   sendSessionMessage,
   sendRemoteInput,
-  updateWorkspaceSettings,
   uploadWorkspaceFile,
 } from "../services/backend";
 
@@ -164,8 +158,8 @@ export function OverviewPage() {
       <div className="dashboard-grid">
         <section className="panel devices-panel"><div className="panel-head"><div><h3>Connected devices</h3><p>Live data from your workspace</p></div><Link to="/app/devices">View all <ArrowRight size={15}/></Link></div>{devices.length ? <div className="device-list compact-list">{devices.slice(0, 3).map((device) => <div className="device-row" key={device.id}><DeviceIcon status={device.status}/><div className="device-info"><b>{device.name}</b><span>{device.owner_label || "Device owner"} · {formatPlatform(device)}</span></div><div className="device-meta"><span className={`status-badge ${device.status}`}><i/>{device.status}</span><small><BatteryCharging size={14}/>{device.battery_percent ?? 0}%</small></div><Link className={`connect-btn ${device.status === "offline" ? "disabled" : ""}`} to={`/app/control/${device.id}`}>{device.status === "offline" ? "Unavailable" : "Connect"}</Link></div>)}</div> : <EmptyState title="No registered devices" text="Install AirLink on an Android phone and sign in. The phone appears here automatically." action={<Link to="/app/devices" className="btn btn-primary btn-small">View devices</Link>}/>}</section>
         <section className="panel activity-panel"><div className="panel-head"><div><h3>Session activity</h3><p>Last seven days</p></div><span className="data-source-badge">Database</span></div><div className="bar-chart">{sevenDayCounts.map((height, index) => <div key={index}><span style={{ height: `${height}%` }}/><small>{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][index]}</small></div>)}</div><div className="chart-summary"><span><i className="dot-purple"/> Recorded sessions <b>{sessions.length}</b></span><span><i className="dot-blue"/> Active now <b>{activeSessions}</b></span></div></section>
-        <section className="panel quick-panel"><div className="panel-head"><div><h3>Quick actions</h3><p>Common workspace tasks</p></div></div><div className="quick-grid"><Link to="/app/devices"><span><Smartphone size={20}/></span><b>Devices</b><small>Automatic Android enrollment</small></Link><Link to="/app/files"><span><UploadCloud size={20}/></span><b>Send a file</b><small>Store in private bucket</small></Link><Link to="/app/sessions"><span><FileText size={20}/></span><b>Audit logs</b><small>Review session history</small></Link><Link to="/app/settings"><span><Settings size={20}/></span><b>Permissions</b><small>Configure workspace</small></Link></div></section>
-        <section className="panel security-panel"><div className="security-score"><div><ShieldCheck size={36}/><span className="score-ring">RLS</span></div><section><span>Backend security</span><h3>Row-level isolation enabled</h3><p>Workspace data is scoped by authenticated membership and device identity.</p></section></div><div className="security-progress"><span style={{ width: "100%" }}/></div><Link to="/app/settings">Review security settings <ChevronRight size={16}/></Link></section>
+        <section className="panel quick-panel"><div className="panel-head"><div><h3>Quick actions</h3><p>Common workspace tasks</p></div></div><div className="quick-grid"><Link to="/app/devices"><span><Smartphone size={20}/></span><b>Devices</b><small>Automatic Android enrollment</small></Link><Link to="/app/files"><span><UploadCloud size={20}/></span><b>Send a file</b><small>Store in private bucket</small></Link><Link to="/app/sessions"><span><FileText size={20}/></span><b>Audit logs</b><small>Review session history</small></Link></div></section>
+        <section className="panel security-panel"><div className="security-score"><div><ShieldCheck size={36}/><span className="score-ring">RLS</span></div><section><span>Backend security</span><h3>Row-level isolation enabled</h3><p>Workspace data is scoped by authenticated membership and device identity.</p></section></div><div className="security-progress"><span style={{ width: "100%" }}/></div></section>
       </div>
     </>
   );
@@ -489,41 +483,5 @@ export function SessionsPage() {
     URL.revokeObjectURL(url);
   };
 
-  return <>{error && <div className="inline-error">{error}</div>}<div className="stats-grid session-stats"><StatCard icon={Activity} label="Total sessions" value={String(sessions.length).padStart(2, "0")} note={`${active} active now`}/><StatCard icon={Clock3} label="Database" value="Live" note="Supabase records"/><StatCard icon={UserRoundCheck} label="Consent rate" value={`${consentRate}%`} note="Approvals audited"/><StatCard icon={AlertTriangle} label="Interrupted" value={String(interrupted).padStart(2, "0")} note="Declined or terminated" trend={interrupted ? "down" : undefined}/></div><section className="panel session-panel"><div className="panel-head"><div><h3>Remote session history</h3><p>Operator, device and consent activity</p></div><button className="outline-button" onClick={exportCsv}><Download size={16}/> Export report</button></div>{sessions.length ? <div className="session-table"><div className="session-row session-head"><span>Device</span><span>Operator</span><span>Started</span><span>Duration</span><span>Status</span><span/></div>{sessions.map((session) => <div className="session-row" key={session.id}><span className="session-device"><DeviceIcon status={session.status === "active" ? "online" : "idle"}/><b>{session.device?.name || "Unknown device"}</b></span><span>{session.operator?.full_name || "Workspace operator"}</span><span>{dateTime(session.created_at)}</span><span>{durationText(session)}</span><span><em className={`session-status ${session.status}`}>{normalizedStatus(session.status)}</em></span><span><Link to={`/app/control/${session.device_id}`}><MoreHorizontal size={18}/></Link></span></div>)}</div> : <EmptyState title="No sessions yet" text="Approved support requests and session lifecycle events will appear here."/>}</section><section className="audit-note"><ShieldCheck size={24}/><div><h3>Consent audit is database-backed</h3><p>Requests, approvals, starts, disconnects and device responses are recorded as immutable session events.</p></div><button onClick={load}>Refresh <RefreshCw size={16}/></button></section></>;
-}
-
-function Toggle({ enabled, onChange, disabled = false }) {
-  return <button disabled={disabled} className={`toggle ${enabled ? "toggle-on" : ""}`} onClick={() => onChange(!enabled)}><span/></button>;
-}
-
-export function SettingsPage() {
-  const { workspace } = useAuth();
-  const [settings, setSettings] = useState({ explicit_consent: true, idle_lock_minutes: 5, allow_clipboard: false, allow_recording: false, connection_notifications: true });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const canEdit = ["owner", "admin"].includes(workspace?.membershipRole);
-
-  useEffect(() => {
-    if (!workspace?.id) return;
-    getWorkspaceSettings(workspace.id).then((data) => data && setSettings(data)).catch((loadError) => setError(loadError.message));
-  }, [workspace?.id]);
-
-  const update = async (key, value) => {
-    const next = { ...settings, [key]: value };
-    setSettings(next);
-    if (!workspace?.id || !canEdit) return;
-    setBusy(true);
-    setError("");
-    try {
-      const saved = await updateWorkspaceSettings(workspace.id, { [key]: value });
-      setSettings(saved);
-    } catch (saveError) {
-      setError(saveError.message);
-      setSettings(settings);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return <div className="settings-layout"><aside className="settings-nav"><button className="active"><Settings size={17}/> General</button><button><ShieldCheck size={17}/> Security</button><button><Bell size={17}/> Notifications</button><button><UserRoundCheck size={17}/> Team members</button><button><Laptop2 size={17}/> Remote sessions</button></aside><div className="settings-content">{error && <div className="inline-error">{error}</div>}{!canEdit && <div className="backend-note">Your role is <b>{workspace?.membershipRole || "member"}</b>. Only workspace owners and admins can change shared settings.</div>}<section className="settings-card"><div className="settings-title"><span><ShieldCheck size={22}/></span><div><h3>Security and consent</h3><p>These values are stored in <code>workspace_settings</code> and protected by RLS.</p></div></div><div className="setting-row"><div><b>Explicit device consent</b><p>Every new support session must be approved on the Android device. This cannot be disabled.</p></div><span className="always-on-badge"><ShieldCheck size={14}/> Always on</span></div><div className="setting-row"><div><b>Auto-lock idle sessions</b><p>Pause input after the configured inactivity window.</p></div><select disabled={!canEdit || busy} value={settings.idle_lock_minutes} onChange={(event) => update("idle_lock_minutes", Number(event.target.value))}><option value={3}>3 minutes</option><option value={5}>5 minutes</option><option value={10}>10 minutes</option><option value={15}>15 minutes</option></select></div></section><section className="settings-card"><div className="settings-title"><span><Laptop2 size={22}/></span><div><h3>Remote session defaults</h3><p>Choose which optional tools can be requested during consented support.</p></div></div><div className="setting-row"><div><b>Clipboard synchronization</b><p>Allow clipboard permission to be requested from the Android owner.</p></div><Toggle disabled={!canEdit || busy} enabled={settings.allow_clipboard} onChange={(value) => update("allow_clipboard", value)}/></div><div className="setting-row"><div><b>Session recording</b><p>Recording remains off unless the Android owner separately approves capture.</p></div><Toggle disabled={!canEdit || busy} enabled={settings.allow_recording} onChange={(value) => update("allow_recording", value)}/></div><div className="setting-row"><div><b>Connection notifications</b><p>Enable backend notification hooks for session start and end events.</p></div><Toggle disabled={!canEdit || busy} enabled={settings.connection_notifications} onChange={(value) => update("connection_notifications", value)}/></div></section><section className="settings-card danger-card"><div><h3>Backend ready</h3><p>Node.js API, Supabase Auth/database/RLS/private storage and Socket.IO signaling are wired. Live screen/input still requires the Android WebRTC client.</p></div><ShieldCheck size={28}/></section></div></div>;
+  return <>{error && <div className="inline-error">{error}</div>}<div className="stats-grid session-stats"><StatCard icon={Activity} label="Total sessions" value={String(sessions.length).padStart(2, "0")} note={`${active} active now`}/><StatCard icon={Clock3} label="Database" value="Live" note="Supabase records"/><StatCard icon={UserRoundCheck} label="Consent rate" value={`${consentRate}%`} note="Approvals audited"/><StatCard icon={AlertTriangle} label="Interrupted" value={String(interrupted).padStart(2, "0")} note="Declined or terminated" trend={interrupted ? "down" : undefined}/></div><section className="panel session-panel"><div className="panel-head"><div><h3>Remote session history</h3><p>Operator, device and consent activity</p></div><button className="outline-button" onClick={exportCsv}><Download size={16}/> Export report</button></div>{sessions.length ? <div className="session-table"><div className="session-row session-head"><span>Device</span><span>Operator</span><span>Started</span><span>Duration</span><span>Status</span><span/></div>{sessions.map((session) => <div className="session-row" key={session.id}><span className="session-device"><DeviceIcon status={session.status === "active" ? "online" : "idle"}/><b>{session.device?.name || "Unknown device"}</b></span><span>{session.operator?.full_name || "Workspace operator"}</span><span>{dateTime(session.created_at)}</span><span>{durationText(session)}</span><span><em className={`session-status ${session.status}`}>{normalizedStatus(session.status)}</em></span><span><Link to={`/app/control/${session.device_id}`}><MoreHorizontal size={18}/></Link></span></div>)}</div> : <EmptyState title="No sessions yet" text="Approved support requests and session lifecycle events will appear here."/>}</section></>;
 }
