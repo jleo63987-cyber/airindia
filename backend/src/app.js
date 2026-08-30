@@ -18,12 +18,54 @@ export function createApp() {
 
   app.use(helmet());
 
+  const allowedOrigins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    ...String(env.frontendOrigin || "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ];
+
   app.use(
     cors({
-      origin: env.frontendOrigin,
+      origin(origin, callback) {
+        // Allow requests without browser Origin header
+        // e.g. Android app, Postman, curl.
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        console.warn("Blocked CORS origin:", origin);
+
+        return callback(
+          new Error(`CORS origin not allowed: ${origin}`),
+        );
+      },
+
       credentials: true,
+
+      methods: [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+      ],
+
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+      ],
     }),
   );
+
+  app.options(/.*/, cors());
 
   app.use(
     express.json({
@@ -46,7 +88,6 @@ export function createApp() {
     ),
   );
 
-  // Root route for Vercel/backend check
   app.get("/", (_req, res) => {
     res.status(200).json({
       ok: true,
@@ -73,8 +114,6 @@ export function createApp() {
   return app;
 }
 
-// Local server.js can still use createApp()
 const app = createApp();
 
-// Required by Vercel
 export default app;
