@@ -18,54 +18,114 @@ export function createApp() {
 
   app.use(helmet());
 
-  const allowedOrigins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    ...String(env.frontendOrigin || "")
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
-  ];
+  // --------------------------------------------------
+  // CORS CONFIGURATION
+  // --------------------------------------------------
 
-  app.use(
-    cors({
-      origin(origin, callback) {
-        // Allow requests without browser Origin header
-        // e.g. Android app, Postman, curl.
-        if (!origin) {
-          return callback(null, true);
-        }
+  const configuredOrigins = String(
+    env.frontendOrigin || "",
+  )
+    .split(",")
+    .map((origin) =>
+      origin.trim().replace(/\/$/, ""),
+    )
+    .filter(Boolean);
 
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, true);
-        }
+  const isAllowedOrigin = (origin) => {
+    // Android app / Postman / curl etc.
+    if (!origin) {
+      return true;
+    }
 
-        console.warn("Blocked CORS origin:", origin);
+    const normalizedOrigin = origin.replace(
+      /\/$/,
+      "",
+    );
 
-        return callback(
-          new Error(`CORS origin not allowed: ${origin}`),
-        );
-      },
+    // Local frontend
+    if (
+      normalizedOrigin ===
+        "http://localhost:5173" ||
+      normalizedOrigin ===
+        "http://127.0.0.1:5173"
+    ) {
+      return true;
+    }
 
-      credentials: true,
+    // Explicitly configured frontend domains
+    if (
+      configuredOrigins.includes(
+        normalizedOrigin,
+      )
+    ) {
+      return true;
+    }
 
-      methods: [
-        "GET",
-        "POST",
-        "PUT",
-        "PATCH",
-        "DELETE",
-        "OPTIONS",
-      ],
+    // AirIndia / AirLink Vercel production
+    // and preview deployments
+    if (
+      /^https:\/\/airindia(?:-[a-zA-Z0-9-]+)?\.vercel\.app$/.test(
+        normalizedOrigin,
+      )
+    ) {
+      return true;
+    }
 
-      allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-      ],
-    }),
-  );
+    return false;
+  };
 
-  app.options(/.*/, cors());
+  const corsOptions = {
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        return callback(null, true);
+      }
+
+      console.warn(
+        "Blocked CORS origin:",
+        origin,
+      );
+
+      return callback(null, false);
+    },
+
+    credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Accept",
+      "Origin",
+      "X-Requested-With",
+    ],
+
+    exposedHeaders: [
+      "RateLimit",
+      "RateLimit-Policy",
+      "RateLimit-Limit",
+      "RateLimit-Remaining",
+      "RateLimit-Reset",
+    ],
+
+    optionsSuccessStatus: 204,
+  };
+
+  app.use(cors(corsOptions));
+
+  // Explicit preflight handler
+  app.options(/.*/, cors(corsOptions));
+
+  // --------------------------------------------------
+  // BODY PARSERS
+  // --------------------------------------------------
 
   app.use(
     express.json({
@@ -80,6 +140,10 @@ export function createApp() {
     }),
   );
 
+  // --------------------------------------------------
+  // LOGGING
+  // --------------------------------------------------
+
   app.use(
     morgan(
       env.nodeEnv === "production"
@@ -88,31 +152,58 @@ export function createApp() {
     ),
   );
 
+  // --------------------------------------------------
+  // ROOT HEALTH CHECK
+  // --------------------------------------------------
+
   app.get("/", (_req, res) => {
     res.status(200).json({
       ok: true,
       service: "airlink-api",
-      message: "AirLink backend is running",
+      message:
+        "AirLink backend is running",
     });
   });
+
+  // --------------------------------------------------
+  // API RATE LIMIT
+  // --------------------------------------------------
 
   app.use(
     "/api",
     rateLimit({
       windowMs: 60_000,
       limit: 240,
+
       standardHeaders: "draft-8",
       legacyHeaders: false,
+
+      // OPTIONS/preflight ko rate limit na karo
+      skip: (req) =>
+        req.method === "OPTIONS",
     }),
   );
 
+  // --------------------------------------------------
+  // API ROUTES
+  // --------------------------------------------------
+
   app.use("/api", apiRoutes);
 
+  // --------------------------------------------------
+  // 404 + ERROR HANDLER
+  // --------------------------------------------------
+
   app.use(notFound);
+
   app.use(errorHandler);
 
   return app;
 }
+
+// --------------------------------------------------
+// VERCEL ENTRY
+// --------------------------------------------------
 
 const app = createApp();
 
