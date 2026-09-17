@@ -7,6 +7,7 @@ import workspaceRoutes from "./workspace.routes.js";
 import fileRoutes from "./file.routes.js";
 import authRoutes from "./auth.routes.js";
 import mobileSecurityRoutes from "./mobileSecurity.routes.js";
+import flutterRemoteRoutes, { flutterRegistrationRoutes } from "./flutterRemote.routes.js";
 
 const router = Router();
 
@@ -22,6 +23,11 @@ router.get("/health", (_req, res) => {
 
 router.use("/auth", authRoutes);
 router.use("/mobile", mobileSecurityRoutes);
+
+// Flutter device-token routes must run before the authenticated web routers.
+// The default Flutter router cleanly skips itself when X-Device-Token is absent.
+router.use(flutterRegistrationRoutes);
+router.use(flutterRemoteRoutes);
 router.use("/me", authenticate, profileRoutes);
 router.use(deviceRoutes);
 router.use(sessionRoutes);
