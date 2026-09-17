@@ -27,6 +27,48 @@ export const presenceSchema = z.object({
   locationLabel: z.string().trim().max(160).nullable().optional(),
 });
 
+
+// Flutter device-token API contracts. These routes intentionally use a
+// separate payload shape from the authenticated web dashboard routes.
+export const flutterDeviceRegistrationSchema = z.object({
+  installationId: z.string().uuid(),
+  username: z.string().trim().regex(/^[A-Za-z0-9]{6}$/, "Username must be exactly 6 letters/numbers"),
+  mobile: z.string().trim().min(6).max(24),
+  securityCode: z.string().regex(/^\d{6}$/, "Security code must be exactly 6 digits"),
+  platform: z.literal("android"),
+  manufacturer: z.string().trim().max(120).nullable().optional(),
+  model: z.string().trim().max(120).nullable().optional(),
+  androidSdk: z.coerce.number().int().min(21).max(100),
+  appVersion: z.string().trim().min(1).max(40),
+}).strict();
+
+export const flutterSessionConsentSchema = z.object({
+  capabilities: z.array(z.enum(["screen", "tap", "swipe", "text", "navigation"]))
+    .max(10)
+    .default([]),
+}).strict();
+
+export const signalCursorSchema = z.object({
+  after: z.string().datetime({ offset: true }).optional(),
+});
+
+export const flutterSignalSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("offer"),
+    sdp: z.string().min(1).max(2_000_000),
+  }).strict(),
+  z.object({
+    type: z.literal("answer"),
+    sdp: z.string().min(1).max(2_000_000),
+  }).strict(),
+  z.object({
+    type: z.literal("candidate"),
+    candidate: z.string().min(1).max(16_384),
+    sdpMid: z.string().max(256).nullable().optional(),
+    sdpMLineIndex: z.coerce.number().int().min(0).max(65_535).nullable().optional(),
+  }).strict(),
+]);
+
 export const requestSessionSchema = z.object({
   permissions: z.record(z.string(), z.boolean()).optional(),
 });

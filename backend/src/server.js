@@ -8,6 +8,10 @@ const server = http.createServer(app);
 const io = attachSocketServer(server);
 app.set("io", io);
 
+// Export the HTTP server so Vercel can keep Socket.IO/WebSocket upgrades attached
+// to the same server while still supporting normal local `node src/server.js`.
+export default server;
+
 server.listen(env.port, () => {
   console.log(`AirLink API listening on http://localhost:${env.port}`);
 });

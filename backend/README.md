@@ -48,3 +48,17 @@ The existing website/operator routes continue to use Supabase `Authorization: Be
 - Accept/Reject remains an explicit phone-owner action; signaling is unavailable until the session is accepted.
 
 Do not commit or share a real `.env` file. Production secrets belong in the hosting provider's encrypted environment settings.
+
+## Production WebRTC / Vercel
+
+The Flutter client can use this production API base URL:
+
+```text
+https://backend-dusky-three-94.vercel.app/api
+```
+
+WebRTC media is peer-to-peer. This backend handles session state and signaling (offer, answer, and ICE candidates). Socket.IO is also attached to the exported HTTP server for realtime browser/operator events; the Flutter device signaling endpoints additionally work over REST, so signaling does not depend only on a persistent socket.
+
+For reliable calls across mobile networks, configure a TURN service in the Flutter/browser WebRTC peer configuration. STUN alone cannot relay media when direct peer connectivity is blocked. TURN credentials should be supplied through deployment/build configuration, not committed to Git.
+
+Required Vercel environment variables include `DEVICE_TOKEN_SECRET` in addition to the other values in `.env.example`.
