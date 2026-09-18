@@ -296,6 +296,7 @@ export async function publishDeviceSignal(identity, sessionId, signal) {
   const { data, error } = await admin
     .from("webrtc_signals")
     .insert({
+      workspace_id: session.workspace_id,
       session_id: session.id,
       sender_user_id: identity.deviceUserId,
       signal_type: signalType,
