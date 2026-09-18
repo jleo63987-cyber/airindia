@@ -214,8 +214,6 @@ export default function RemoteScreenStream({
   const noVideoTimerRef =
     useRef(null);
 
-  const browserOfferSdpRef =
-    useRef(null);
 
   const onErrorRef =
     useRef(onError);
@@ -286,9 +284,6 @@ export default function RemoteScreenStream({
     receivedVideoTrackRef.current =
       false;
 
-    browserOfferSdpRef.current =
-      null;
-
     if (noVideoTimerRef.current) {
       window.clearTimeout(
         noVideoTimerRef.current,
@@ -296,16 +291,6 @@ export default function RemoteScreenStream({
       noVideoTimerRef.current =
         null;
     }
-
-    // Explicit recv-only transceiver guarantees a video m-line in the
-    // browser offer. Android can then attach its screen track in the answer.
-    peer.addTransceiver(
-      "video",
-      {
-        direction:
-          "recvonly",
-      },
-    );
 
     setState(
       "waiting",
@@ -683,122 +668,6 @@ export default function RemoteScreenStream({
       }
     }
 
-    async function createAndPublishBrowserOffer() {
-      if (
-        cancelled ||
-        peer.localDescription ||
-        peer.remoteDescription ||
-        peer.signalingState !==
-          "stable"
-      ) {
-        return;
-      }
-
-      console.log(
-        "AirLink Web: creating recv-only browser offer.",
-      );
-
-      const offer =
-        await peer.createOffer();
-
-      if (
-        !offer?.sdp ||
-        !offer.sdp.includes(
-          "m=video",
-        )
-      ) {
-        throw new Error(
-          "Browser offer did not contain a video media section.",
-        );
-      }
-
-      await peer.setLocalDescription(
-        offer,
-      );
-
-      browserOfferSdpRef.current =
-        offer.sdp;
-
-      await publishWebrtcSignal(
-        sessionId,
-        "offer",
-        {
-          type:
-            "offer",
-          sdp:
-            offer.sdp,
-        },
-      );
-
-      console.log(
-        "AirLink Web: browser video offer published; waiting for Android answer.",
-      );
-    }
-
-    async function handleAnswer(
-      payload,
-      signalId,
-    ) {
-      if (
-        cancelled ||
-        !payload?.sdp
-      ) {
-        return;
-      }
-
-      if (
-        peer.remoteDescription?.type ===
-        "answer"
-      ) {
-        if (signalId) {
-          seenSignalIdsRef.current.add(
-            signalId,
-          );
-        }
-        return;
-      }
-
-      if (
-        peer.signalingState !==
-        "have-local-offer"
-      ) {
-        console.warn(
-          "AirLink Web: answer arrived in unexpected signaling state:",
-          peer.signalingState,
-        );
-        return;
-      }
-
-      setState(
-        "connecting",
-      );
-
-      await peer.setRemoteDescription(
-        new RTCSessionDescription(
-          {
-            type:
-              "answer",
-            sdp:
-              String(
-                payload.sdp,
-              ),
-          },
-        ),
-      );
-
-      await flushCandidates();
-
-      if (signalId) {
-        seenSignalIdsRef.current.add(
-          signalId,
-        );
-      }
-
-      console.log(
-        "AirLink Web: Android SDP answer applied.",
-      );
-    }
-
     async function handleOffer(
       payload,
       signalId,
@@ -1006,18 +875,6 @@ export default function RemoteScreenStream({
 
       if (
         signal.signalType ===
-        "answer"
-      ) {
-        await handleAnswer(
-          signal.payload,
-          signalId,
-        );
-
-        return;
-      }
-
-      if (
-        signal.signalType ===
         "offer"
       ) {
         await handleOffer(
@@ -1167,10 +1024,12 @@ export default function RemoteScreenStream({
         reportError,
       );
 
-    // Publish the browser offer immediately. The Android app fetches it after
-    // the owner presses Accept, then answers with the captured screen track.
-    createAndPublishBrowserOffer().catch(
-      reportError,
+    // Android is the sole WebRTC offerer. It starts screen capture after the
+    // owner presses Accept, publishes an SDP offer containing the screen video
+    // track, and this browser answers it. Keeping a single offerer avoids SDP
+    // glare (both peers creating offers at the same time).
+    console.log(
+      "AirLink Web: waiting for Android screen offer.",
     );
 
     return () => {
@@ -1211,9 +1070,6 @@ export default function RemoteScreenStream({
 
       receivedVideoTrackRef.current =
         false;
-
-      browserOfferSdpRef.current =
-        null;
 
       if (noVideoTimerRef.current) {
         window.clearTimeout(
