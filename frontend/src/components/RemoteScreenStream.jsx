@@ -9,18 +9,19 @@ import {
 } from "lucide-react";
 
 import {
-  emitSessionSignal,
   subscribeToSession,
 } from "../services/realtime";
 
 import {
   listWebrtcSignals,
+  publishWebrtcSignal,
   sendRemoteInput,
+  startRemoteSession,
 } from "../services/backend";
 
 /**
- * STUN ONLY
- * No TURN configuration.
+ * STUN + optional TURN relay.
+ * TURN values can be supplied through Vite environment variables.
  */
 const ICE_SERVERS = [
   {
@@ -30,6 +31,19 @@ const ICE_SERVERS = [
     ],
   },
 ];
+
+const TURN_URL = (import.meta.env.VITE_TURN_URL || "").trim();
+if (TURN_URL) {
+  ICE_SERVERS.push({
+    urls: TURN_URL,
+    ...(import.meta.env.VITE_TURN_USERNAME
+      ? { username: import.meta.env.VITE_TURN_USERNAME }
+      : {}),
+    ...(import.meta.env.VITE_TURN_CREDENTIAL
+      ? { credential: import.meta.env.VITE_TURN_CREDENTIAL }
+      : {}),
+  });
+}
 
 function candidateKey(
   candidate,
@@ -220,7 +234,9 @@ export default function RemoteScreenStream({
     );
 
     console.log(
-      "AirLink Web ICE configuration: STUN only",
+      TURN_URL
+        ? "AirLink Web ICE configuration: STUN + TURN"
+        : "AirLink Web ICE configuration: STUN only",
     );
 
     let cancelled =
@@ -328,7 +344,7 @@ export default function RemoteScreenStream({
           "AirLink Web: sending ICE candidate",
         );
 
-        emitSessionSignal(
+        publishWebrtcSignal(
           sessionId,
           "ice",
           payload,
@@ -701,7 +717,10 @@ export default function RemoteScreenStream({
         /**
          * Publish answer afterwards.
          */
-        await emitSessionSignal(
+        // Persist the answer over REST so Android can receive it through
+        // its deployed polling channel even when Socket.IO/WebSocket is not
+        // available on the hosting path.
+        await publishWebrtcSignal(
           sessionId,
           "answer",
           {
@@ -712,6 +731,20 @@ export default function RemoteScreenStream({
               answer.sdp,
           },
         );
+
+        // The Android client is the offerer in this flow, so the browser
+        // answer completes signaling. Promote the approved session to active.
+        try {
+          await startRemoteSession(
+            sessionId,
+          );
+        } catch (startError) {
+          // A duplicate/late start is harmless if another path already made
+          // the session active. Surface all other errors.
+          if (startError?.status !== 409) {
+            throw startError;
+          }
+        }
 
         appliedOfferSdpRef.current =
           offerSdp;
