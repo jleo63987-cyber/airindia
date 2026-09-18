@@ -15,7 +15,6 @@ import {
 import {
   listWebrtcSignals,
   publishWebrtcSignal,
-  sendRemoteInput,
   startRemoteSession,
 } from "../services/backend";
 
@@ -214,6 +213,11 @@ export default function RemoteScreenStream({
   const noVideoTimerRef =
     useRef(null);
 
+  const controlChannelRef =
+    useRef(null);
+
+  const pendingControlRef =
+    useRef(new Map());
 
   const onErrorRef =
     useRef(onError);
@@ -229,6 +233,47 @@ export default function RemoteScreenStream({
     onErrorRef.current =
       onError;
   }, [onError]);
+
+  function sendControlCommand(command) {
+    return new Promise((resolve, reject) => {
+      const channel = controlChannelRef.current;
+
+      if (!channel || channel.readyState !== "open") {
+        reject(
+          new Error(
+            "Remote control channel is not ready yet. Wait a moment and try again.",
+          ),
+        );
+        return;
+      }
+
+      const requestId =
+        globalThis.crypto?.randomUUID?.() ||
+        `ctl-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+      const timer = window.setTimeout(() => {
+        const pending = pendingControlRef.current.get(requestId);
+        if (!pending) return;
+        pendingControlRef.current.delete(requestId);
+        pending.reject(new Error("Android did not acknowledge the remote action."));
+      }, 5000);
+
+      pendingControlRef.current.set(requestId, { resolve, reject, timer });
+
+      try {
+        channel.send(
+          JSON.stringify({
+            ...command,
+            requestId,
+          }),
+        );
+      } catch (error) {
+        window.clearTimeout(timer);
+        pendingControlRef.current.delete(requestId);
+        reject(error);
+      }
+    });
+  }
 
   useEffect(() => {
     if (!sessionId) {
@@ -317,6 +362,71 @@ export default function RemoteScreenStream({
           normalized,
         );
       };
+
+    const attachControlChannel = (channel) => {
+      if (!channel) return;
+
+      console.log(
+        "AirLink Web: remote control data channel received:",
+        channel.label,
+      );
+
+      controlChannelRef.current = channel;
+
+      channel.onopen = () => {
+        console.log("AirLink Web: remote control channel open.");
+      };
+
+      channel.onclose = () => {
+        console.log("AirLink Web: remote control channel closed.");
+        if (controlChannelRef.current === channel) {
+          controlChannelRef.current = null;
+        }
+      };
+
+      channel.onerror = (event) => {
+        console.warn("AirLink Web: remote control channel error:", event);
+      };
+
+      channel.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.type !== "ack" || !payload?.requestId) return;
+
+          const pending = pendingControlRef.current.get(payload.requestId);
+          if (!pending) return;
+
+          pendingControlRef.current.delete(payload.requestId);
+          window.clearTimeout(pending.timer);
+
+          if (payload.success) {
+            pending.resolve(payload);
+          } else {
+            pending.reject(
+              new Error(payload.error || "Android rejected the remote action."),
+            );
+          }
+        } catch (error) {
+          console.warn("AirLink Web: invalid control acknowledgement:", error);
+        }
+      };
+    };
+
+    peer.ondatachannel = (event) => {
+      attachControlChannel(event.channel);
+    };
+
+    const externalControlHandler = (event) => {
+      const detail = event.detail;
+      if (!detail || detail.sessionId !== sessionId || !detail.command) return;
+
+      sendControlCommand(detail.command).catch(reportError);
+    };
+
+    window.addEventListener(
+      "airlink:remote-control",
+      externalControlHandler,
+    );
 
     peer.onicecandidate =
       (event) => {
@@ -1079,6 +1189,18 @@ export default function RemoteScreenStream({
           null;
       }
 
+      window.removeEventListener(
+        "airlink:remote-control",
+        externalControlHandler,
+      );
+
+      for (const pending of pendingControlRef.current.values()) {
+        window.clearTimeout(pending.timer);
+        pending.reject(new Error("Remote session closed."));
+      }
+      pendingControlRef.current.clear();
+      controlChannelRef.current = null;
+
       try {
         peer.close();
       } catch {}
@@ -1256,8 +1378,7 @@ export default function RemoteScreenStream({
       };
     }
 
-    sendRemoteInput(
-      sessionId,
+    sendControlCommand(
       command,
     ).catch(
       (error) => {
