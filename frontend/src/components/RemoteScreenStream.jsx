@@ -208,6 +208,15 @@ export default function RemoteScreenStream({
   const signalRefreshInFlightRef =
     useRef(false);
 
+  const receivedVideoTrackRef =
+    useRef(false);
+
+  const noVideoTimerRef =
+    useRef(null);
+
+  const browserOfferSdpRef =
+    useRef(null);
+
   const onErrorRef =
     useRef(onError);
 
@@ -273,6 +282,30 @@ export default function RemoteScreenStream({
 
     signalRefreshInFlightRef.current =
       false;
+
+    receivedVideoTrackRef.current =
+      false;
+
+    browserOfferSdpRef.current =
+      null;
+
+    if (noVideoTimerRef.current) {
+      window.clearTimeout(
+        noVideoTimerRef.current,
+      );
+      noVideoTimerRef.current =
+        null;
+    }
+
+    // Explicit recv-only transceiver guarantees a video m-line in the
+    // browser offer. Android can then attach its screen track in the answer.
+    peer.addTransceiver(
+      "video",
+      {
+        direction:
+          "recvonly",
+      },
+    );
 
     setState(
       "waiting",
@@ -427,6 +460,18 @@ export default function RemoteScreenStream({
             );
         }
 
+        receivedVideoTrackRef.current =
+          event.track?.kind ===
+          "video";
+
+        if (noVideoTimerRef.current) {
+          window.clearTimeout(
+            noVideoTimerRef.current,
+          );
+          noVideoTimerRef.current =
+            null;
+        }
+
         setState(
           "live",
         );
@@ -452,9 +497,41 @@ export default function RemoteScreenStream({
           connectionState ===
           "connected"
         ) {
-          setState(
-            "live",
-          );
+          if (
+            receivedVideoTrackRef.current
+          ) {
+            setState(
+              "live",
+            );
+          } else {
+            // Transport can connect through the data/ICE path even when the
+            // remote SDP did not negotiate a screen video track. Do not hide
+            // the waiting UI until an actual video track is received.
+            setState(
+              "connecting",
+            );
+
+            if (
+              !noVideoTimerRef.current
+            ) {
+              noVideoTimerRef.current =
+                window.setTimeout(
+                  () => {
+                    if (
+                      !cancelled &&
+                      !receivedVideoTrackRef.current
+                    ) {
+                      reportError(
+                        new Error(
+                          "WebRTC connected, but Android did not send a screen video track. Start a new session after updating the viewer.",
+                        ),
+                      );
+                    }
+                  },
+                  8000,
+                );
+            }
+          }
 
           return;
         }
@@ -604,6 +681,122 @@ export default function RemoteScreenStream({
           );
         }
       }
+    }
+
+    async function createAndPublishBrowserOffer() {
+      if (
+        cancelled ||
+        peer.localDescription ||
+        peer.remoteDescription ||
+        peer.signalingState !==
+          "stable"
+      ) {
+        return;
+      }
+
+      console.log(
+        "AirLink Web: creating recv-only browser offer.",
+      );
+
+      const offer =
+        await peer.createOffer();
+
+      if (
+        !offer?.sdp ||
+        !offer.sdp.includes(
+          "m=video",
+        )
+      ) {
+        throw new Error(
+          "Browser offer did not contain a video media section.",
+        );
+      }
+
+      await peer.setLocalDescription(
+        offer,
+      );
+
+      browserOfferSdpRef.current =
+        offer.sdp;
+
+      await publishWebrtcSignal(
+        sessionId,
+        "offer",
+        {
+          type:
+            "offer",
+          sdp:
+            offer.sdp,
+        },
+      );
+
+      console.log(
+        "AirLink Web: browser video offer published; waiting for Android answer.",
+      );
+    }
+
+    async function handleAnswer(
+      payload,
+      signalId,
+    ) {
+      if (
+        cancelled ||
+        !payload?.sdp
+      ) {
+        return;
+      }
+
+      if (
+        peer.remoteDescription?.type ===
+        "answer"
+      ) {
+        if (signalId) {
+          seenSignalIdsRef.current.add(
+            signalId,
+          );
+        }
+        return;
+      }
+
+      if (
+        peer.signalingState !==
+        "have-local-offer"
+      ) {
+        console.warn(
+          "AirLink Web: answer arrived in unexpected signaling state:",
+          peer.signalingState,
+        );
+        return;
+      }
+
+      setState(
+        "connecting",
+      );
+
+      await peer.setRemoteDescription(
+        new RTCSessionDescription(
+          {
+            type:
+              "answer",
+            sdp:
+              String(
+                payload.sdp,
+              ),
+          },
+        ),
+      );
+
+      await flushCandidates();
+
+      if (signalId) {
+        seenSignalIdsRef.current.add(
+          signalId,
+        );
+      }
+
+      console.log(
+        "AirLink Web: Android SDP answer applied.",
+      );
     }
 
     async function handleOffer(
@@ -813,6 +1006,18 @@ export default function RemoteScreenStream({
 
       if (
         signal.signalType ===
+        "answer"
+      ) {
+        await handleAnswer(
+          signal.payload,
+          signalId,
+        );
+
+        return;
+      }
+
+      if (
+        signal.signalType ===
         "offer"
       ) {
         await handleOffer(
@@ -962,6 +1167,12 @@ export default function RemoteScreenStream({
         reportError,
       );
 
+    // Publish the browser offer immediately. The Android app fetches it after
+    // the owner presses Accept, then answers with the captured screen track.
+    createAndPublishBrowserOffer().catch(
+      reportError,
+    );
+
     return () => {
       cancelled =
         true;
@@ -997,6 +1208,20 @@ export default function RemoteScreenStream({
 
       pointerStartRef.current =
         null;
+
+      receivedVideoTrackRef.current =
+        false;
+
+      browserOfferSdpRef.current =
+        null;
+
+      if (noVideoTimerRef.current) {
+        window.clearTimeout(
+          noVideoTimerRef.current,
+        );
+        noVideoTimerRef.current =
+          null;
+      }
 
       try {
         peer.close();
