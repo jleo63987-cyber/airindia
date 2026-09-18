@@ -1,0 +1,11 @@
+.dart_tool/
+.packages
+.pub-cache/
+build/
+.idea/
+*.iml
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+backend/NODE_ENV=development.txt
