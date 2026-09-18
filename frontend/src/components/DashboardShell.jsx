@@ -1,17 +1,13 @@
 import { useEffect, useState } from "react";
 import {
   Bell,
-  ChevronDown,
   Files,
   Gauge,
-  HelpCircle,
-  Laptop2,
   LogOut,
   Menu,
   MonitorSmartphone,
   Moon,
   Search,
-  Settings,
   ShieldCheck,
   Sun,
   X,
@@ -22,19 +18,16 @@ import Brand from "./Brand";
 
 const navItems = [
   { label: "Overview", path: "/app/overview", icon: Gauge },
-  { label: "My devices", path: "/app/devices", icon: MonitorSmartphone },
-  { label: "Remote control", path: "/app/devices", icon: Laptop2 },
+  { label: "Devices", path: "/app/devices", icon: MonitorSmartphone },
   { label: "Files", path: "/app/files", icon: Files },
   { label: "Sessions", path: "/app/sessions", icon: ShieldCheck },
-  { label: "Settings", path: "/app/settings", icon: Settings },
 ];
 
 const titleMap = {
   "/app/overview": ["Overview", "Everything happening across your support workspace."],
-  "/app/devices": ["My devices", "Connect, inspect and manage consent-enabled Android devices."],
+  "/app/devices": ["Devices", "Connect and manage consent-enabled Android devices."],
   "/app/files": ["File transfer", "Move support files between your browser and connected devices."],
-  "/app/sessions": ["Session history", "Review remote sessions, operators and consent records."],
-  "/app/settings": ["Workspace settings", "Configure security, notifications and remote session behavior."],
+  "/app/sessions": ["Session history", "Review remote sessions and consent records."],
 };
 
 function initials(value = "AirLink") {
@@ -64,12 +57,17 @@ export default function DashboardShell() {
       await signOut();
       navigate("/", { replace: true });
     } catch {
-      // Auth listener will preserve the session if sign-out fails.
+      // Keep the current session when sign-out fails.
     }
   };
 
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "Administrator";
   const workspaceName = workspace?.name || "AirLink Workspace";
+
+  const navClass = (path, isActive) => {
+    const devicesActive = path === "/app/devices" && isControl;
+    return `side-link ${isActive || devicesActive ? "active" : ""}`;
+  };
 
   return (
     <div className="app-shell">
@@ -79,33 +77,29 @@ export default function DashboardShell() {
           <button className="icon-btn sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X size={20} /></button>
         </div>
 
-        <div className="workspace-card">
+        <div className="workspace-card workspace-card-simple">
           <span className="workspace-avatar">{initials(workspaceName)}</span>
-          <span><b>{workspaceName}</b><small>{workspace?.membershipRole || "member"} workspace</small></span>
-          <ChevronDown size={16} />
+          <span><b>{workspaceName}</b><small>{workspace?.membershipRole || "member"}</small></span>
         </div>
 
-        <nav className="side-nav">
-          <span className="nav-label">Workspace</span>
-          {navItems.map(({ label, path, icon: Icon }, index) => (
-            <NavLink key={`${label}-${index}`} to={path} className={({ isActive }) => `side-link ${isActive && !(label === "Remote control" && location.pathname === "/app/devices") ? "active" : ""}`}>
+        <nav className="side-nav" aria-label="Workspace navigation">
+          {navItems.map(({ label, path, icon: Icon }) => (
+            <NavLink key={label} to={path} className={({ isActive }) => navClass(path, isActive)}>
               <Icon size={19} />
               <span>{label}</span>
-              {label === "My devices" && <em>{deviceCount}</em>}
+              {label === "Devices" && <em>{deviceCount}</em>}
             </NavLink>
           ))}
         </nav>
 
         <div className="sidebar-bottom">
-          <button className="side-link"><HelpCircle size={19} /><span>Help center</span></button>
-          <div className="security-mini">
-            <ShieldCheck size={21} />
-            <span><b>Protected sessions</b><small>Consent and audit enabled</small></span>
-          </div>
-          <button className="profile-row" onClick={logout}>
+          <div className="profile-row profile-summary">
             <span className="profile-avatar">{initials(displayName)}</span>
             <span><b>{displayName}</b><small>{user?.email || "Administrator"}</small></span>
-            <LogOut size={17} />
+          </div>
+          <button className="side-link signout-link" onClick={logout} type="button">
+            <LogOut size={19} />
+            <span>Sign out</span>
           </button>
         </div>
       </aside>
