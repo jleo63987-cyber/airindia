@@ -20,8 +20,6 @@ import {
   House,
   Keyboard,
   LockKeyhole,
-  Mic,
-  MicOff,
   MonitorSmartphone,
   MoreHorizontal,
   MousePointer2,
@@ -63,7 +61,6 @@ import {
   requestRemoteSession,
   removeDevice,
   sendSessionMessage,
-  sendRemoteInput,
   uploadWorkspaceFile,
 } from "../services/backend";
 
@@ -266,7 +263,6 @@ export function RemoteControlPage() {
   const [events, setEvents] = useState([]);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
-  const [muted, setMuted] = useState(false);
   const [orientation, setOrientation] = useState("portrait");
   const [toast, setToast] = useState("");
   const [tab, setTab] = useState("info");
@@ -371,13 +367,42 @@ export function RemoteControlPage() {
     }
   };
 
-  const sendNavigation = async (type) => {
+  const sendNavigation = (type) => {
     if (!session?.id || session.status !== "active" || session.approved_permissions?.remote_input !== true) return;
-    try {
-      await sendRemoteInput(session.id, { type });
-    } catch (controlError) {
-      setError(controlError.message);
+    setError("");
+    window.dispatchEvent(new CustomEvent("airlink:remote-control", {
+      detail: { sessionId: session.id, command: { type } },
+    }));
+  };
+
+  const takeScreenshot = () => {
+    const video = document.querySelector("#airlink-live-screen video");
+    if (!video?.videoWidth || !video?.videoHeight) {
+      setError("Live Android screen is not ready for a screenshot yet.");
+      return;
     }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setError("Could not capture the current Android frame.");
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `airindia-screen-${new Date().toISOString().replaceAll(":", "-")}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      notify("Screenshot saved");
+    }, "image/png");
   };
 
   if (!device) return <div className="app-loader inline-loader"><span className="loader-ring"/><p>{error || "Loading device…"}</p></div>;
@@ -387,7 +412,7 @@ export function RemoteControlPage() {
   const approved = status === "approved";
   const terminal = ["completed", "declined", "terminated"].includes(status);
 
-  return <div className="control-layout"><section className="control-stage"><div className="session-bar"><div><span className={`live-dot ${active ? "" : "paused"}`}/><b>{active ? "Remote session active" : status === "requested" ? "Waiting for device approval" : approved ? "Device approved" : terminal ? `Session ${normalizedStatus(status).toLowerCase()}` : "No active session"}</b><small>{active || approved ? "Consent recorded" : "Remote input stays disabled until approval"} · {device.owner_label || device.name}</small></div><div><span><Signal size={15}/> {device.signal_percent ?? 0}%</span><span><Zap size={15}/> Realtime</span>{(!session || terminal) && <button disabled={busy || device.status === "offline"} onClick={requestSession}><Play size={16}/> Request</button>}{status === "requested" && <button disabled={busy} onClick={finishSession}><Power size={16}/> Cancel</button>}{(approved || active) && <button className="end-session" disabled={busy} onClick={finishSession}><Power size={16}/> Terminate</button>}</div></div>{error && <div className="control-error">{error}</div>}<div className={`remote-canvas orientation-${orientation} ${active ? "" : "canvas-paused"}`}><div className="canvas-grid"/>{approved || active ? <RemoteScreenStream sessionId={session.id} localUserId={user?.id} controlEnabled={active && session.approved_permissions?.remote_input === true} onError={(streamError) => setError(streamError.message)} /> : <div className="pause-overlay"><LockKeyhole size={30}/><b>{status === "requested" ? "Approval required" : approved ? "Connecting automatically" : device.status === "offline" ? "Device offline" : "Request a support session"}</b><span>{status === "requested" ? "The Android owner must approve this request on-device." : approved ? "Consent is recorded. AirLink is activating the session automatically." : "The WebRTC stream will attach here after Android integration."}</span>{(!session || terminal) && device.status !== "offline" && <button className="btn btn-primary btn-small" disabled={busy} onClick={requestSession}>Request access</button>}</div>}</div><div className="control-dock"><button disabled={!active} onClick={() => notify("Screenshot command queued for WebRTC integration")}><Camera size={19}/><span>Screenshot</span></button><button disabled={!active} onClick={() => setOrientation(orientation === "portrait" ? "landscape" : "portrait")}><RotateCw size={19}/><span>Rotate</span></button><button disabled={!active} onClick={() => document.getElementById("airlink-live-screen")?.requestFullscreen?.()}><Fullscreen size={19}/><span>Fullscreen</span></button><button disabled={!active} onClick={() => setMuted(!muted)}>{muted ? <MicOff size={19}/> : <Mic size={19}/>}<span>{muted ? "Unmute" : "Audio"}</span></button><button disabled={!active || session?.approved_permissions?.remote_input !== true} onClick={() => sendNavigation("back")}><ArrowLeft size={19}/><span>Back</span></button><button disabled={!active || session?.approved_permissions?.remote_input !== true} onClick={() => sendNavigation("home")}><House size={19}/><span>Home</span></button><button disabled={!active || session?.approved_permissions?.remote_input !== true} onClick={() => sendNavigation("recents")}><PanelsTopLeft size={19}/><span>Recents</span></button></div></section><aside className="control-sidebar"><div className="control-tabs"><button className={tab === "info" ? "active" : ""} onClick={() => setTab("info")}>Device</button><button className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}>Chat</button><button className={tab === "events" ? "active" : ""} onClick={() => setTab("events")}>Events</button></div>{tab === "info" && <div className="control-side-content"><div className="device-identity"><DeviceIcon status={device.status}/><div><h3>{device.name}</h3><p>{formatPlatform(device)}</p></div></div>{["approved", "active", "completed", "terminated"].includes(status) ? <div className="consent-box"><UserRoundCheck size={20}/><span><b>Owner consent recorded</b><small>{dateTime(session?.approved_at)}</small></span></div> : <div className="danger-note"><LockKeyhole size={18}/><span>Consent has not been granted for this session.</span></div>}<dl className="info-list"><div><dt>Battery</dt><dd><BatteryCharging size={15}/>{device.battery_percent ?? 0}%</dd></div><div><dt>Network</dt><dd><Wifi size={15}/>{device.network_type || "Unknown"}</dd></div><div><dt>Location label</dt><dd>{device.location_label || "Not shared"}</dd></div><div><dt>Last seen</dt><dd>{relativeTime(device.last_seen_at)}</dd></div><div><dt>Session ID</dt><dd>{session?.id ? `#${session.id.slice(0, 8)}` : "—"}</dd></div></dl><div className="permission-list"><h4>Requested permissions</h4><span><Check/> Screen viewing</span><span><Check/> Remote gestures</span>{session?.requested_permissions?.keyboard ? <span><Check/> Keyboard input</span> : null}{session?.requested_permissions?.file_exchange ? <span><Check/> File exchange</span> : null}</div><div className="danger-note"><AlertTriangle size={18}/><span>The Android owner can decline or disconnect at any time.</span></div></div>}{tab === "chat" && <div className="chat-panel"><div className="chat-messages">{messages.length ? messages.map((item) => <div key={item.id} className={item.sender_user_id === user?.id ? "chat-sent" : "chat-received"}>{item.body}<small>{dateTime(item.created_at)}</small></div>) : <span className="chat-time">Messages are stored with the consented session.</span>}</div><div className="chat-input"><input disabled={!session?.id} value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} placeholder="Write a message..."/><button disabled={!session?.id} onClick={sendMessage}><Send size={17}/></button></div></div>}{tab === "events" && <div className="event-list">{events.length ? events.map((event) => <div key={event.id}><i/><span><b>{event.event_type.replaceAll("_", " ")}</b><small>{dateTime(event.created_at)}</small></span></div>) : <div className="event-empty">Session events will appear here.</div>}</div>}</aside>{toast && <div className="toast"><Check size={17}/>{toast}</div>}</div>;
+  return <div className="control-layout"><section className="control-stage"><div className="session-bar"><div><span className={`live-dot ${active ? "" : "paused"}`}/><b>{active ? "Remote session active" : status === "requested" ? "Waiting for device approval" : approved ? "Device approved" : terminal ? `Session ${normalizedStatus(status).toLowerCase()}` : "No active session"}</b><small>{active || approved ? "Consent recorded" : "Remote input stays disabled until approval"} · {device.owner_label || device.name}</small></div><div><span><Signal size={15}/> {device.signal_percent ?? 0}%</span><span><Zap size={15}/> Realtime</span>{(!session || terminal) && <button disabled={busy || device.status === "offline"} onClick={requestSession}><Play size={16}/> Request</button>}{status === "requested" && <button disabled={busy} onClick={finishSession}><Power size={16}/> Cancel</button>}{(approved || active) && <button className="end-session" disabled={busy} onClick={finishSession}><Power size={16}/> Terminate</button>}</div></div>{error && <div className="control-error">{error}</div>}<div className={`remote-canvas orientation-${orientation} ${active ? "" : "canvas-paused"}`}><div className="canvas-grid"/>{approved || active ? <RemoteScreenStream sessionId={session.id} localUserId={user?.id} controlEnabled={active && session.approved_permissions?.remote_input === true} onError={(streamError) => setError(streamError.message)} /> : <div className="pause-overlay"><LockKeyhole size={30}/><b>{status === "requested" ? "Approval required" : approved ? "Connecting automatically" : device.status === "offline" ? "Device offline" : "Request a support session"}</b><span>{status === "requested" ? "The Android owner must approve this request on-device." : approved ? "Consent is recorded. AirLink is activating the session automatically." : "The WebRTC stream will attach here after Android integration."}</span>{(!session || terminal) && device.status !== "offline" && <button className="btn btn-primary btn-small" disabled={busy} onClick={requestSession}>Request access</button>}</div>}</div><div className="control-dock"><button disabled={!active} onClick={takeScreenshot}><Camera size={19}/><span>Screenshot</span></button><button disabled={!active} onClick={() => setOrientation(orientation === "portrait" ? "landscape" : "portrait")}><RotateCw size={19}/><span>Rotate</span></button><button disabled={!active} onClick={() => document.getElementById("airlink-live-screen")?.requestFullscreen?.()}><Fullscreen size={19}/><span>Fullscreen</span></button><button disabled={!active || session?.approved_permissions?.remote_input !== true} onClick={() => sendNavigation("back")}><ArrowLeft size={19}/><span>Back</span></button><button disabled={!active || session?.approved_permissions?.remote_input !== true} onClick={() => sendNavigation("home")}><House size={19}/><span>Home</span></button><button disabled={!active || session?.approved_permissions?.remote_input !== true} onClick={() => sendNavigation("recents")}><PanelsTopLeft size={19}/><span>Recents</span></button></div></section><aside className="control-sidebar"><div className="control-tabs"><button className={tab === "info" ? "active" : ""} onClick={() => setTab("info")}>Device</button><button className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}>Chat</button><button className={tab === "events" ? "active" : ""} onClick={() => setTab("events")}>Events</button></div>{tab === "info" && <div className="control-side-content"><div className="device-identity"><DeviceIcon status={device.status}/><div><h3>{device.name}</h3><p>{formatPlatform(device)}</p></div></div>{["approved", "active", "completed", "terminated"].includes(status) ? <div className="consent-box"><UserRoundCheck size={20}/><span><b>Owner consent recorded</b><small>{dateTime(session?.approved_at)}</small></span></div> : <div className="danger-note"><LockKeyhole size={18}/><span>Consent has not been granted for this session.</span></div>}<dl className="info-list"><div><dt>Battery</dt><dd><BatteryCharging size={15}/>{device.battery_percent ?? 0}%</dd></div><div><dt>Network</dt><dd><Wifi size={15}/>{device.network_type || "Unknown"}</dd></div><div><dt>Location label</dt><dd>{device.location_label || "Not shared"}</dd></div><div><dt>Last seen</dt><dd>{relativeTime(device.last_seen_at)}</dd></div><div><dt>Session ID</dt><dd>{session?.id ? `#${session.id.slice(0, 8)}` : "—"}</dd></div></dl><div className="permission-list"><h4>Requested permissions</h4><span><Check/> Screen viewing</span><span><Check/> Remote gestures</span>{session?.requested_permissions?.keyboard ? <span><Check/> Keyboard input</span> : null}{session?.requested_permissions?.file_exchange ? <span><Check/> File exchange</span> : null}</div><div className="danger-note"><AlertTriangle size={18}/><span>The Android owner can decline or disconnect at any time.</span></div></div>}{tab === "chat" && <div className="chat-panel"><div className="chat-messages">{messages.length ? messages.map((item) => <div key={item.id} className={item.sender_user_id === user?.id ? "chat-sent" : "chat-received"}>{item.body}<small>{dateTime(item.created_at)}</small></div>) : <span className="chat-time">Messages are stored with the consented session.</span>}</div><div className="chat-input"><input disabled={!session?.id} value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} placeholder="Write a message..."/><button disabled={!session?.id} onClick={sendMessage}><Send size={17}/></button></div></div>}{tab === "events" && <div className="event-list">{events.length ? events.map((event) => <div key={event.id}><i/><span><b>{event.event_type.replaceAll("_", " ")}</b><small>{dateTime(event.created_at)}</small></span></div>) : <div className="event-empty">Session events will appear here.</div>}</div>}</aside>{toast && <div className="toast"><Check size={17}/>{toast}</div>}</div>;
 }
 
 function VideoBadge() {
