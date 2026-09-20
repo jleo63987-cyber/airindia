@@ -281,7 +281,7 @@ export default function RemoteScreenStream({
         if (!pending) return;
         pendingControlRef.current.delete(requestId);
         pending.reject(new Error("Android did not acknowledge the remote action."));
-      }, 5000);
+      }, 2500);
 
       pendingControlRef.current.set(requestId, { resolve, reject, timer });
 
@@ -1167,7 +1167,7 @@ export default function RemoteScreenStream({
                 reportError,
               );
             },
-            1500,
+            650,
           );
       })
       .catch(
@@ -1351,7 +1351,20 @@ export default function RemoteScreenStream({
 
     let command;
 
-    if (
+    // Three-button Android navigation bars are part of the captured frame,
+    // but Accessibility gesture injection is not guaranteed to activate the
+    // system navigation surface itself. Convert clicks in the bottom nav strip
+    // into Android global actions so the visible triangle/circle/square work.
+    const androidNavStripTap =
+      distance < 0.018 &&
+      elapsed < 550 &&
+      end.y >= 0.90;
+
+    if (androidNavStripTap) {
+      command = {
+        type: end.x < 0.34 ? "back" : end.x < 0.67 ? "home" : "recents",
+      };
+    } else if (
       distance <
       0.012
     ) {
@@ -1413,7 +1426,7 @@ export default function RemoteScreenStream({
           Math.min(
             1200,
             Math.max(
-              120,
+              80,
               Math.round(
                 elapsed,
               ),

@@ -271,3 +271,12 @@ img, svg { display: block; }
 
 /* Simplified dashboard sidebar */
 .workspace-card-simple{margin-bottom:18px}.workspace-card-simple>span:nth-child(2){min-width:0}.workspace-card-simple b,.workspace-card-simple small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.side-nav{gap:6px}.sidebar-bottom{padding-top:10px;border-top:1px solid var(--border)}.profile-summary{cursor:default;border-top:0;padding:9px 8px 12px}.profile-summary:hover{background:transparent}.signout-link{width:100%;color:#ff9aa6}.signout-link:hover{background:rgba(255,101,119,.08);color:#ffb0b9}.signout-link svg{color:currentColor}
+
+
+/* Low-latency remote control toolbar */
+.control-dock{scrollbar-width:thin;overscroll-behavior-x:contain}
+.control-dock .dock-divider{width:1px;height:34px;flex:0 0 1px;background:var(--border);margin:0 3px}
+.control-dock button:not(:disabled){cursor:pointer}
+.remote-video-shell.remote-control-enabled{cursor:crosshair}
+.remote-video-shell.remote-control-enabled:active{cursor:grabbing}
+@media (max-width:900px){.control-dock button{min-width:68px}.control-dock .dock-divider{height:30px}}
