@@ -280,3 +280,51 @@ img, svg { display: block; }
 .remote-video-shell.remote-control-enabled{cursor:crosshair}
 .remote-video-shell.remote-control-enabled:active{cursor:grabbing}
 @media (max-width:900px){.control-dock button{min-width:68px}.control-dock .dock-divider{height:30px}}
+
+/* Always-visible remote swipe controls */
+.swipe-dock{
+  min-height:58px;
+  border-top:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:7px 12px;
+  background:rgba(8,20,34,.98);
+  flex:0 0 auto;
+}
+.swipe-dock-label{
+  color:var(--muted);
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.02em;
+  margin-right:6px;
+  white-space:nowrap;
+}
+.swipe-dock button{
+  min-width:70px;
+  height:42px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--surface-2);
+  color:#a9bdd2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  font-size:9px;
+  cursor:pointer;
+  transition:.18s ease;
+}
+.swipe-dock button:hover:not(:disabled){
+  background:rgba(111,92,255,.12);
+  border-color:rgba(111,92,255,.35);
+  color:#c9c4ff;
+  transform:translateY(-1px);
+}
+.swipe-dock button:disabled{opacity:.32;cursor:not-allowed}
+:root[data-theme="light"] .swipe-dock{background:rgba(255,255,255,.97)}
+@media (max-width:900px){
+  .swipe-dock{justify-content:flex-start;overflow-x:auto}
+  .swipe-dock button{min-width:64px}
+}
