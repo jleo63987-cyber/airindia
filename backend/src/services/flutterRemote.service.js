@@ -306,7 +306,13 @@ export async function publishDeviceSignal(identity, sessionId, signal) {
     .single();
   assertSupabase(error);
 
-  if (signal.type === "answer" && session.status === "approved") {
+  // Android is the WebRTC offerer in the deployed mobile flow. Once the
+  // owner has approved the session and Android successfully publishes its
+  // screen-share offer, the remote session is genuinely starting. Promote
+  // approved -> active here so web controls are not left disabled while the
+  // video is already live. Keep `answer` as a compatibility path for older
+  // browser-offerer builds.
+  if (["offer", "answer"].includes(signal.type) && session.status === "approved") {
     const { error: startError } = await admin
       .from("remote_sessions")
       .update({ status: "active", started_at: new Date().toISOString() })

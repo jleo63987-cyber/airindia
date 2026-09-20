@@ -172,6 +172,8 @@ export default function RemoteScreenStream({
   controlEnabled = false,
   localUserId = null,
   onError,
+  onControlStateChange,
+  onStreamStateChange,
 }) {
   const videoRef =
     useRef(null);
@@ -222,6 +224,17 @@ export default function RemoteScreenStream({
   const onErrorRef =
     useRef(onError);
 
+  const onControlStateChangeRef =
+    useRef(onControlStateChange);
+
+  const onStreamStateChangeRef =
+    useRef(onStreamStateChange);
+
+  const [
+    controlReady,
+    setControlReady,
+  ] = useState(false);
+
   const [
     state,
     setState,
@@ -233,6 +246,18 @@ export default function RemoteScreenStream({
     onErrorRef.current =
       onError;
   }, [onError]);
+
+  useEffect(() => {
+    onControlStateChangeRef.current = onControlStateChange;
+  }, [onControlStateChange]);
+
+  useEffect(() => {
+    onStreamStateChangeRef.current = onStreamStateChange;
+  }, [onStreamStateChange]);
+
+  useEffect(() => {
+    onStreamStateChangeRef.current?.(state);
+  }, [state]);
 
   function sendControlCommand(command) {
     return new Promise((resolve, reject) => {
@@ -337,6 +362,9 @@ export default function RemoteScreenStream({
         null;
     }
 
+    setControlReady(false);
+    onControlStateChangeRef.current?.(false);
+
     setState(
       "waiting",
     );
@@ -373,16 +401,28 @@ export default function RemoteScreenStream({
 
       controlChannelRef.current = channel;
 
-      channel.onopen = () => {
+      const markOpen = () => {
         console.log("AirLink Web: remote control channel open.");
+        setControlReady(true);
+        onControlStateChangeRef.current?.(true);
       };
+
+      channel.onopen = markOpen;
 
       channel.onclose = () => {
         console.log("AirLink Web: remote control channel closed.");
         if (controlChannelRef.current === channel) {
           controlChannelRef.current = null;
         }
+        setControlReady(false);
+        onControlStateChangeRef.current?.(false);
       };
+
+      // ondatachannel may fire after the channel is already open on fast local
+      // connections, so do not rely exclusively on a future `open` event.
+      if (channel.readyState === "open") {
+        markOpen();
+      }
 
       channel.onerror = (event) => {
         console.warn("AirLink Web: remote control channel error:", event);
@@ -1200,6 +1240,8 @@ export default function RemoteScreenStream({
       }
       pendingControlRef.current.clear();
       controlChannelRef.current = null;
+      setControlReady(false);
+      onControlStateChangeRef.current?.(false);
 
       try {
         peer.close();
@@ -1229,6 +1271,7 @@ export default function RemoteScreenStream({
   ) {
     if (
       !controlEnabled ||
+      !controlReady ||
       state !== "live"
     ) {
       return;
@@ -1276,6 +1319,7 @@ export default function RemoteScreenStream({
     if (
       !start ||
       !controlEnabled ||
+      !controlReady ||
       state !== "live"
     ) {
       return;
@@ -1415,9 +1459,10 @@ export default function RemoteScreenStream({
 
         cursor:
           controlEnabled &&
+          controlReady &&
           state ===
             "live"
-            ? "crosshair"
+            ? "pointer"
             : "default",
       }}
     >
